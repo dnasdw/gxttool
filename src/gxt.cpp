@@ -203,7 +203,7 @@ namespace sce
 			{
 				if (!supportsBorderData(a_eFormat))
 				{
-					UPrintf(USTR("ERROR: format do not support border\n\n"), a_eFormat);
+					UPrintf(USTR("ERROR: format %08X do not support border\n\n"), a_eFormat);
 					return false;
 				}
 				u32 uBpp = 0;
@@ -303,7 +303,7 @@ namespace sce
 					a_uBpp = 32;
 					break;
 				default:
-					UPrintf(USTR("ERROR: do not support base format %d\n\n"), eBaseFormat);
+					UPrintf(USTR("ERROR: do not support base format %08X\n\n"), eBaseFormat);
 					return false;
 				}
 				return true;
