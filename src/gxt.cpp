@@ -585,7 +585,7 @@ bool CGxt::ExportFile()
 				{
 					u32 uFaceOffset = uOffset;
 					u32 uMipWidth = data.m_width;
-					u32 uMipHeight = data.m_width;
+					u32 uMipHeight = data.m_height;
 					u32 uMipWidthEx = data.m_numLevels > 1 ? sce::Texture::enclosingPowerOf2(data.m_width) : data.m_width;
 					u32 uMipHeightEx = data.m_numLevels > 1 ? sce::Texture::enclosingPowerOf2(data.m_height) : data.m_height;
 					uMipWidthEx = SCE_ALIGN(uMipWidthEx, uWidthAlignment);
@@ -708,6 +708,7 @@ int CGxt::decode(sce::Texture::Gxt::Data* a_pData, u32 a_uOffset, n32 a_nWidth, 
 	u8* pRGBA = nullptr;
 	switch (a_pData->m_format)
 	{
+	case SCE_GXM_TEXTURE_FORMAT_U8U8U8U8_ARGB:
 	case SCE_GXM_TEXTURE_FORMAT_U8U8U8U8_RGBA:
 	case SCE_GXM_TEXTURE_FORMAT_P8_RGBA:
 		break;
@@ -734,6 +735,9 @@ int CGxt::decode(sce::Texture::Gxt::Data* a_pData, u32 a_uOffset, n32 a_nWidth, 
 	PVRTextureHeaderV3 pvrTextureHeaderV3;
 	switch (a_pData->m_format)
 	{
+	case SCE_GXM_TEXTURE_FORMAT_U8U8U8U8_ARGB:
+		pvrTextureHeaderV3.u64PixelFormat = pvrtexture::PixelType('b', 'g', 'r', 'a', 8, 8, 8, 8).PixelTypeID;
+		break;
 	case SCE_GXM_TEXTURE_FORMAT_U8U8U8U8_RGBA:
 		pvrTextureHeaderV3.u64PixelFormat = pvrtexture::PixelType('a', 'b', 'g', 'r', 8, 8, 8, 8).PixelTypeID;
 		break;
