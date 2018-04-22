@@ -32,6 +32,79 @@ namespace sce
 			return bsr(a_uX);
 		}
 
+		u32 getMortonNumber(u32 a_uX, u32 a_uY, u32 a_uWidth, u32 a_uHeight)
+		{
+			u32 uLogW = bsr(a_uWidth);
+			u32 uLogH = bsr(a_uHeight);
+			u32 d = std::min<u32>(uLogW, uLogH);
+			u32 m = 0;
+			for (u32 i = 0; i < d; ++i)
+			{
+				m |= ((a_uX & (1 << i)) << (i + 1)) | ((a_uY & (1 << i)) << i);
+			}
+			// Append any extra bits
+			if (a_uWidth < a_uHeight)
+			{
+				m |= ((a_uY & ~(a_uWidth - 1)) << d);
+			}
+			else
+			{
+				m |= ((a_uX & ~(a_uHeight - 1)) << d);
+			}
+			return m;
+		}
+
+		void deSwizzleLevel4bpp(u8* a_pTgt, const u8* a_pSrc, u32 a_uWidth, u32 a_uHeight)
+		{
+			u32 uMX = getMortonNumber(a_uWidth - 1, 0, a_uWidth, a_uHeight);
+			u32 uMY = getMortonNumber(0, a_uHeight - 1, a_uWidth, a_uHeight);
+			u32 uLineStride = SCE_ALIGN(a_uWidth, 2);
+			u32 uOY = 0;
+			for (u32 uY = 0; uY < a_uHeight; uY++)
+			{
+				u32 uOX = 0;
+				for (u32 uX = 0; uX < a_uWidth; uX++)
+				{
+					size_t uSrcOfsN = uOX + uOY;
+					size_t uTgtOfsN = uY * uLineStride + uX;
+					size_t uSrcOfs = uSrcOfsN >> 1;
+					size_t uTgtOfs = uTgtOfsN >> 1;
+					u32 uSrcShift = (uSrcOfsN & 1) << 2;
+					u32 uTgtShift = (uTgtOfsN & 1) << 2;
+					u8 n = (a_pSrc[uSrcOfs] >> uSrcShift) & 0xF;
+					a_pTgt[uTgtOfs] = (a_pTgt[uTgtOfs] & (0xF0 >> uTgtShift)) | (n << uTgtShift);
+					uOX = (uOX - uMX) & uMX;
+				}
+				uOY = (uOY - uMY) & uMY;
+			}
+		}
+
+		void deSwizzleLevel(u8* a_pTgt, const u8* a_pSrc, u32 a_uWidth, u32 a_uHeight, u32 a_uBpp)
+		{
+			if (a_uBpp == 4)
+			{
+				return deSwizzleLevel4bpp(a_pTgt, a_pSrc, a_uWidth, a_uHeight);
+			}
+			u32 uWidthPow2 = enclosingPowerOf2(a_uWidth);
+			u32 uHeightPow2 = enclosingPowerOf2(a_uHeight);
+			u32 uMX = getMortonNumber(uWidthPow2 - 1, 0, uWidthPow2, uHeightPow2);
+			u32 uMY = getMortonNumber(0, uHeightPow2 - 1, uWidthPow2, uHeightPow2);
+			u32 uPixelSize = a_uBpp / 8;
+			u32 uOY = 0;
+			for (u32 uY = 0; uY < a_uHeight; ++uY)
+			{
+				u32 uOX = 0;
+				for (u32 uX = 0; uX < a_uWidth; ++uX)
+				{
+					size_t uSrcOfs = (uOX + uOY) * uPixelSize;
+					memcpy(a_pTgt, a_pSrc + uSrcOfs, uPixelSize);
+					a_pTgt += uPixelSize;
+					uOX = (uOX - uMX) & uMX;
+				}
+				uOY = (uOY - uMY) & uMY;
+			}
+		}
+
 		namespace Gxt
 		{
 
@@ -590,7 +663,7 @@ bool CGxt::ExportFile()
 					u32 uMipHeightEx = data.m_numLevels > 1 ? sce::Texture::enclosingPowerOf2(data.m_height) : data.m_height;
 					uMipWidthEx = SCE_ALIGN(uMipWidthEx, uWidthAlignment);
 					pvrtexture::CPVRTexture* pPVRTexture = nullptr;
-					if (decode(&data, uOffset, uMipWidthEx, uMipHeightEx, &pPVRTexture) == 0)
+					if (decode(&data, uOffset, uMipWidthEx, uMipHeightEx, uBpp, &pPVRTexture) == 0)
 					{
 						UString sPngFileName = Format(USTR("%") PRIUS USTR("/%d_%d.png"), m_sDirName.c_str(), i, j);
 						FILE* fpSub = UFopen(sPngFileName.c_str(), USTR("wb"));
@@ -703,8 +776,17 @@ bool CGxt::IsGxtFile(const UString& a_sFileName)
 	return sceGxtHeader.tag == SCE_GXT_TAG;
 }
 
-int CGxt::decode(sce::Texture::Gxt::Data* a_pData, u32 a_uOffset, n32 a_nWidth, n32 a_nHeight, pvrtexture::CPVRTexture** a_pPVRTexture)
+int CGxt::decode(sce::Texture::Gxt::Data* a_pData, u32 a_uOffset, n32 a_nWidth, n32 a_nHeight, u32 a_uBpp, pvrtexture::CPVRTexture** a_pPVRTexture)
 {
+	u8* pLinear = new u8[a_nWidth * a_nHeight * a_uBpp / 8];
+	if (!sce::Texture::Gxt::isPvr(a_pData->m_format) && (a_pData->m_type == SCE_GXM_TEXTURE_SWIZZLED || a_pData->m_type == SCE_GXM_TEXTURE_SWIZZLED_ARBITRARY || a_pData->m_type == SCE_GXM_TEXTURE_CUBE))
+	{
+		sce::Texture::deSwizzleLevel(pLinear, &*a_pData->m_data.begin() + a_uOffset, a_nWidth, a_nHeight, a_uBpp);
+	}
+	else
+	{
+		memcpy(pLinear, &*a_pData->m_data.begin() + a_uOffset, a_nWidth * a_nHeight * a_uBpp / 8);
+	}
 	u8* pRGBA = nullptr;
 	switch (a_pData->m_format)
 	{
@@ -725,11 +807,11 @@ int CGxt::decode(sce::Texture::Gxt::Data* a_pData, u32 a_uOffset, n32 a_nWidth, 
 		pRGBA = new u8[a_nWidth * a_nHeight * 4];
 		for (n32 i = 0; i < a_nWidth * a_nHeight; i++)
 		{
-			*reinterpret_cast<u32*>(pRGBA + i * 4) = *reinterpret_cast<u32*>(a_pData->m_palette256->m_data + *(&*a_pData->m_data.begin() + a_uOffset + i) * 4);
+			*reinterpret_cast<u32*>(pRGBA + i * 4) = *reinterpret_cast<u32*>(a_pData->m_palette256->m_data + *(pLinear + i) * 4);
 		}
 		break;
 	default:
-		pRGBA = &*a_pData->m_data.begin() + a_uOffset;
+		pRGBA = pLinear;
 		break;
 	}
 	PVRTextureHeaderV3 pvrTextureHeaderV3;
@@ -768,5 +850,6 @@ int CGxt::decode(sce::Texture::Gxt::Data* a_pData, u32 a_uOffset, n32 a_nWidth, 
 	default:
 		break;
 	}
+	delete[] pLinear;
 	return 0;
 }

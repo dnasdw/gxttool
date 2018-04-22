@@ -8,6 +8,14 @@ namespace pvrtexture
 	class CPVRTexture;
 }
 
+// /target/include_common/gxt.h
+
+#define SCE_GXT_TAG								0x00545847UL		/* 'GXT\0'	*/
+#define SCE_GXT_VERSION							0x10000003UL
+
+#define SCE_GXT_PALETTE_SIZE_P4					64U
+#define SCE_GXT_PALETTE_SIZE_P8					1024U
+
 // /target/include_common/gxm/defs.h
 
 /** The minimum alignment of texture data that satisfies the
@@ -83,14 +91,6 @@ namespace pvrtexture
 	@ingroup render
 */
 #define SCE_GXM_TEXTURE_BASE_FORMAT_MASK			0x9f000000U
-
-// /target/include_common/gxt.h
-
-#define SCE_GXT_TAG								0x00545847UL		/* 'GXT\0'	*/
-#define SCE_GXT_VERSION							0x10000003UL
-
-#define SCE_GXT_PALETTE_SIZE_P4					64U
-#define SCE_GXT_PALETTE_SIZE_P8					1024U
 
 // /host_tools/graphics/src/sce_texture/texture_libraries/sce_texture_core/common/common.h
 
@@ -717,6 +717,10 @@ namespace sce
 
 		u32 floorLog2(u32 a_uX);
 
+		// /host_tools/graphics/src/sce_texture/texture_libraries/sce_texture_core/common/swizzle.h
+
+		void deSwizzleLevel(u8* a_pTgt, const u8* a_pSrc, u32 a_uWidth, u32 a_uHeight, u32 a_uBpp);
+
 		namespace Gxt
 		{
 
@@ -784,7 +788,7 @@ public:
 	bool ImportFile();
 	static bool IsGxtFile(const UString& a_sFileName);
 private:
-	static int decode(sce::Texture::Gxt::Data* a_pData, u32 a_uOffset, n32 a_nWidth, n32 a_nHeight, pvrtexture::CPVRTexture** a_pPVRTexture);
+	static int decode(sce::Texture::Gxt::Data* a_pData, u32 a_uOffset, n32 a_nWidth, n32 a_nHeight, u32 a_uBpp, pvrtexture::CPVRTexture** a_pPVRTexture);
 	UString m_sFileName;
 	UString m_sDirName;
 	bool m_bVerbose;
