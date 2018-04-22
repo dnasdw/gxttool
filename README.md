@@ -2,6 +2,10 @@
 
 A tool for exporting/importing gxt file.
 
+## History
+
+- v0.1.0 @ 2018.04.22 - First pre release
+
 ## Platforms
 
 - Windows
