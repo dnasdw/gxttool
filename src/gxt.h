@@ -788,7 +788,7 @@ public:
 	bool ImportFile();
 	static bool IsGxtFile(const UString& a_sFileName);
 private:
-	static int decode(sce::Texture::Gxt::Data* a_pData, u32 a_uOffset, n32 a_nWidth, n32 a_nHeight, u32 a_uBpp, pvrtexture::CPVRTexture** a_pPVRTexture);
+	static int decode(sce::Texture::Gxt::Data* a_pData, u8* a_pLinear, n32 a_nWidth, n32 a_nHeight, u32 a_uBpp, pvrtexture::CPVRTexture** a_pPVRTexture);
 	UString m_sFileName;
 	UString m_sDirName;
 	bool m_bVerbose;
