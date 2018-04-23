@@ -904,11 +904,13 @@ int CGxt::decode(sce::Texture::Gxt::Data* a_pData, u8* a_pLinear, n32 a_nWidth, 
 	u8* pRGBA = nullptr;
 	switch (a_pData->m_format)
 	{
+	case SCE_GXM_TEXTURE_FORMAT_U8U8U8U8_ABGR:
 	case SCE_GXM_TEXTURE_FORMAT_U8U8U8U8_ARGB:
 	case SCE_GXM_TEXTURE_FORMAT_U8U8U8U8_RGBA:
 	case SCE_GXM_TEXTURE_BASE_FORMAT_UBC1:
 	case SCE_GXM_TEXTURE_BASE_FORMAT_UBC2:
 	case SCE_GXM_TEXTURE_BASE_FORMAT_UBC3:
+	case SCE_GXM_TEXTURE_FORMAT_P8_ABGR:
 	case SCE_GXM_TEXTURE_FORMAT_P8_RGBA:
 	case SCE_GXM_TEXTURE_FORMAT_U8U8U8_RGB:
 		break;
@@ -917,6 +919,7 @@ int CGxt::decode(sce::Texture::Gxt::Data* a_pData, u8* a_pLinear, n32 a_nWidth, 
 	}
 	switch (a_pData->m_format)
 	{
+	case SCE_GXM_TEXTURE_FORMAT_P8_ABGR:
 	case SCE_GXM_TEXTURE_FORMAT_P8_RGBA:
 		if (a_pData->m_palette256 == nullptr)
 		{
@@ -935,6 +938,9 @@ int CGxt::decode(sce::Texture::Gxt::Data* a_pData, u8* a_pLinear, n32 a_nWidth, 
 	PVRTextureHeaderV3 pvrTextureHeaderV3;
 	switch (a_pData->m_format)
 	{
+	case SCE_GXM_TEXTURE_FORMAT_U8U8U8U8_ABGR:
+		pvrTextureHeaderV3.u64PixelFormat = pvrtexture::PixelType('r', 'g', 'b', 'a', 8, 8, 8, 8).PixelTypeID;
+		break;
 	case SCE_GXM_TEXTURE_FORMAT_U8U8U8U8_ARGB:
 		pvrTextureHeaderV3.u64PixelFormat = pvrtexture::PixelType('b', 'g', 'r', 'a', 8, 8, 8, 8).PixelTypeID;
 		break;
@@ -949,6 +955,9 @@ int CGxt::decode(sce::Texture::Gxt::Data* a_pData, u8* a_pLinear, n32 a_nWidth, 
 		break;
 	case SCE_GXM_TEXTURE_BASE_FORMAT_UBC3:
 		pvrTextureHeaderV3.u64PixelFormat = ePVRTPF_BC3;
+		break;
+	case SCE_GXM_TEXTURE_FORMAT_P8_ABGR:
+		pvrTextureHeaderV3.u64PixelFormat = pvrtexture::PixelType('r', 'g', 'b', 'a', 8, 8, 8, 8).PixelTypeID;
 		break;
 	case SCE_GXM_TEXTURE_FORMAT_P8_RGBA:
 		pvrTextureHeaderV3.u64PixelFormat = pvrtexture::PixelType('a', 'b', 'g', 'r', 8, 8, 8, 8).PixelTypeID;
@@ -974,6 +983,7 @@ int CGxt::decode(sce::Texture::Gxt::Data* a_pData, u8* a_pLinear, n32 a_nWidth, 
 	pvrtexture::Transcode(**a_pPVRTexture, pvrtexture::PVRStandard8PixelType, ePVRTVarTypeUnsignedByteNorm, ePVRTCSpacelRGB);
 	switch (a_pData->m_format)
 	{
+	case SCE_GXM_TEXTURE_FORMAT_P8_ABGR:
 	case SCE_GXM_TEXTURE_FORMAT_P8_RGBA:
 		delete[] pRGBA;
 		break;
