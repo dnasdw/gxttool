@@ -907,10 +907,12 @@ int CGxt::decode(sce::Texture::Gxt::Data* a_pData, u8* a_pLinear, n32 a_nWidth, 
 	case SCE_GXM_TEXTURE_FORMAT_U8U8U8U8_ABGR:
 	case SCE_GXM_TEXTURE_FORMAT_U8U8U8U8_ARGB:
 	case SCE_GXM_TEXTURE_FORMAT_U8U8U8U8_RGBA:
-	case SCE_GXM_TEXTURE_BASE_FORMAT_UBC1:
-	case SCE_GXM_TEXTURE_BASE_FORMAT_UBC2:
-	case SCE_GXM_TEXTURE_BASE_FORMAT_UBC3:
+	case SCE_GXM_TEXTURE_FORMAT_UBC1_ABGR:
+	case SCE_GXM_TEXTURE_FORMAT_UBC2_ABGR:
+	case SCE_GXM_TEXTURE_FORMAT_UBC3_ABGR:
+	case SCE_GXM_TEXTURE_FORMAT_P4_ABGR:
 	case SCE_GXM_TEXTURE_FORMAT_P8_ABGR:
+	case SCE_GXM_TEXTURE_FORMAT_P8_ARGB:
 	case SCE_GXM_TEXTURE_FORMAT_P8_RGBA:
 	case SCE_GXM_TEXTURE_FORMAT_U8U8U8_RGB:
 		break;
@@ -919,7 +921,20 @@ int CGxt::decode(sce::Texture::Gxt::Data* a_pData, u8* a_pLinear, n32 a_nWidth, 
 	}
 	switch (a_pData->m_format)
 	{
+	case SCE_GXM_TEXTURE_FORMAT_P4_ABGR:
+		if (a_pData->m_palette16 == nullptr)
+		{
+			return 1;
+		}
+		pRGBA = new u8[a_nWidth * a_nHeight * 4];
+		for (n32 i = 0; i < a_nWidth / 2 * a_nHeight; i++)
+		{
+			*reinterpret_cast<u32*>(pRGBA + i * 4) = *reinterpret_cast<u32*>(a_pData->m_palette16->m_data + (*(a_pLinear + i) & 0xF) * 4);
+			*reinterpret_cast<u32*>(pRGBA + (i + 1) * 4) = *reinterpret_cast<u32*>(a_pData->m_palette16->m_data + (*(a_pLinear + i) >> 4 & 0xF) * 4);
+		}
+		break;
 	case SCE_GXM_TEXTURE_FORMAT_P8_ABGR:
+	case SCE_GXM_TEXTURE_FORMAT_P8_ARGB:
 	case SCE_GXM_TEXTURE_FORMAT_P8_RGBA:
 		if (a_pData->m_palette256 == nullptr)
 		{
@@ -947,17 +962,23 @@ int CGxt::decode(sce::Texture::Gxt::Data* a_pData, u8* a_pLinear, n32 a_nWidth, 
 	case SCE_GXM_TEXTURE_FORMAT_U8U8U8U8_RGBA:
 		pvrTextureHeaderV3.u64PixelFormat = pvrtexture::PixelType('a', 'b', 'g', 'r', 8, 8, 8, 8).PixelTypeID;
 		break;
-	case SCE_GXM_TEXTURE_BASE_FORMAT_UBC1:
+	case SCE_GXM_TEXTURE_FORMAT_UBC1_ABGR:
 		pvrTextureHeaderV3.u64PixelFormat = ePVRTPF_BC1;
 		break;
-	case SCE_GXM_TEXTURE_BASE_FORMAT_UBC2:
+	case SCE_GXM_TEXTURE_FORMAT_UBC2_ABGR:
 		pvrTextureHeaderV3.u64PixelFormat = ePVRTPF_BC2;
 		break;
-	case SCE_GXM_TEXTURE_BASE_FORMAT_UBC3:
+	case SCE_GXM_TEXTURE_FORMAT_UBC3_ABGR:
 		pvrTextureHeaderV3.u64PixelFormat = ePVRTPF_BC3;
+		break;
+	case SCE_GXM_TEXTURE_FORMAT_P4_ABGR:
+		pvrTextureHeaderV3.u64PixelFormat = pvrtexture::PixelType('r', 'g', 'b', 'a', 8, 8, 8, 8).PixelTypeID;
 		break;
 	case SCE_GXM_TEXTURE_FORMAT_P8_ABGR:
 		pvrTextureHeaderV3.u64PixelFormat = pvrtexture::PixelType('r', 'g', 'b', 'a', 8, 8, 8, 8).PixelTypeID;
+		break;
+	case SCE_GXM_TEXTURE_FORMAT_P8_ARGB:
+		pvrTextureHeaderV3.u64PixelFormat = pvrtexture::PixelType('b', 'g', 'r', 'a', 8, 8, 8, 8).PixelTypeID;
 		break;
 	case SCE_GXM_TEXTURE_FORMAT_P8_RGBA:
 		pvrTextureHeaderV3.u64PixelFormat = pvrtexture::PixelType('a', 'b', 'g', 'r', 8, 8, 8, 8).PixelTypeID;
@@ -983,7 +1004,9 @@ int CGxt::decode(sce::Texture::Gxt::Data* a_pData, u8* a_pLinear, n32 a_nWidth, 
 	pvrtexture::Transcode(**a_pPVRTexture, pvrtexture::PVRStandard8PixelType, ePVRTVarTypeUnsignedByteNorm, ePVRTCSpacelRGB);
 	switch (a_pData->m_format)
 	{
+	case SCE_GXM_TEXTURE_FORMAT_P4_ABGR:
 	case SCE_GXM_TEXTURE_FORMAT_P8_ABGR:
+	case SCE_GXM_TEXTURE_FORMAT_P8_ARGB:
 	case SCE_GXM_TEXTURE_FORMAT_P8_RGBA:
 		delete[] pRGBA;
 		break;
