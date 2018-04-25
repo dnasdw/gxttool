@@ -786,6 +786,7 @@ public:
 	void SetVerbose(bool a_bVerbose);
 	bool ExportFile();
 	bool ImportFile();
+	bool TestPalette();
 	static bool IsGxtFile(const UString& a_sFileName);
 private:
 	static int decode(sce::Texture::Gxt::Data* a_pData, u8* a_pLinear, n32 a_nWidth, n32 a_nHeight, u32 a_uBpp, pvrtexture::CPVRTexture** a_pPVRTexture);

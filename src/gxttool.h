@@ -19,6 +19,7 @@ public:
 		kActionExport,
 		kActionImport,
 		kActionCheck,
+		kActionTestPalette,
 		kActionHelp
 	};
 	struct SOption
@@ -39,6 +40,7 @@ private:
 	EParseOptionReturn parseOptions(int a_nKey, int& a_nIndex, int a_nArgc, UChar* a_pArgv[]);
 	bool exportFile();
 	bool importFile();
+	bool testPalette();
 	EAction m_eAction;
 	UString m_sFileName;
 	UString m_sDirName;

@@ -878,6 +878,443 @@ bool CGxt::ImportFile()
 	return false;
 }
 
+bool CGxt::TestPalette()
+{
+	bool bResult = true;
+	FILE* fp = UFopen(m_sFileName.c_str(), USTR("rb"));
+	if (fp == nullptr)
+	{
+		return false;
+	}
+	fseek(fp, 0, SEEK_END);
+	u32 uGxtSize = ftell(fp);
+	fseek(fp, 0, SEEK_SET);
+	u8* pGxt = new u8[uGxtSize];
+	fread(pGxt, 1, uGxtSize, fp);
+	fclose(fp);
+	SceGxtHeader* pSceGxtHeader = reinterpret_cast<SceGxtHeader*>(pGxt);
+	n32 nNumTextures = 0;
+	do
+	{
+		if (!sce::Texture::Gxt::isValidInput(pGxt, uGxtSize))
+		{
+			bResult = false;
+			UPrintf(USTR("ERROR: unknown version %08X\n\n"), pSceGxtHeader->version);
+			break;
+		}
+		if (pSceGxtHeader->numP4Palettes + pSceGxtHeader->numP8Palettes == 0)
+		{
+			UPrintf(USTR("WARN: no palette\n\n"));
+			break;
+		}
+		if (pSceGxtHeader->numP4Palettes * SCE_GXT_PALETTE_SIZE_P4 + pSceGxtHeader->numP8Palettes * SCE_GXT_PALETTE_SIZE_P8 > pSceGxtHeader->dataSize)
+		{
+			bResult = false;
+			UPrintf(USTR("ERROR: data size is too small\n\n"));
+			break;
+		}
+		u32 uDataEnd = pSceGxtHeader->dataOffset + pSceGxtHeader->dataSize;
+		u32 uPal256Offset = uDataEnd - pSceGxtHeader->numP8Palettes * SCE_GXT_PALETTE_SIZE_P8;
+		u32 uPal16Offset = uPal256Offset - pSceGxtHeader->numP4Palettes * SCE_GXT_PALETTE_SIZE_P4;
+		for (u32 i = 0; i < pSceGxtHeader->numP4Palettes; i++)
+		{
+			sce::Texture::Gxt::Palette16 palette16;
+			memcpy(palette16.m_data, pGxt + uPal16Offset + i * SCE_GXT_PALETTE_SIZE_P4, SCE_GXT_PALETTE_SIZE_P4);
+			m_vPalette16.push_back(palette16);
+		}
+		for (u32 i = 0; i < pSceGxtHeader->numP8Palettes; i++)
+		{
+			sce::Texture::Gxt::Palette256 palette256;
+			memcpy(palette256.m_data, pGxt + uPal256Offset + i * SCE_GXT_PALETTE_SIZE_P8, SCE_GXT_PALETTE_SIZE_P8);
+			m_vPalette256.push_back(palette256);
+		}
+		uDataEnd = uPal16Offset;
+		u32 uDataBegin = pSceGxtHeader->dataOffset;
+		if (uDataBegin + pSceGxtHeader->numTextures * sizeof(SceGxtTextureInfo) > uDataEnd)
+		{
+			bResult = false;
+			UPrintf(USTR("ERROR: data size is too small\n\n"));
+			break;
+		}
+		uDataBegin += pSceGxtHeader->numTextures * sizeof(SceGxtTextureInfo);
+		SceGxtTextureInfo* pSceGxtTextureInfo = reinterpret_cast<SceGxtTextureInfo*>(pSceGxtHeader + 1);
+		for (u32 i = 0; i < pSceGxtHeader->numTextures; i++)
+		{
+			SceGxtTextureInfo& sceGxtTextureInfo = pSceGxtTextureInfo[i];
+			sce::Texture::Gxt::Data data;
+			data.m_format = static_cast<SceGxmTextureFormat>(sceGxtTextureInfo.format);
+			data.m_type = static_cast<SceGxmTextureType>(sceGxtTextureInfo.type);
+			data.m_width = sceGxtTextureInfo.width;
+			data.m_height = sceGxtTextureInfo.height;
+			data.m_numLevels = sceGxtTextureInfo.mipCount;
+			data.m_borderSize = 0;
+			u32 uNumFaces = sceGxtTextureInfo.type == SCE_GXM_TEXTURE_CUBE ? 6 : 1;
+			u32 uTextureDataSize = 0;
+			if (!sce::Texture::Gxt::getTextureDataSize(uTextureDataSize, data.m_width, data.m_height, sceGxtTextureInfo.mipCount, uNumFaces, static_cast<SceGxmTextureFormat>(sceGxtTextureInfo.format), static_cast<SceGxmTextureType>(sceGxtTextureInfo.type)))
+			{
+				bResult = false;
+				break;
+			}
+			data.m_totalSize = data.m_borderSize + uTextureDataSize;
+			u32 uTexDataOffset = sceGxtTextureInfo.dataOffset;
+			if ((sceGxtTextureInfo.flags & SCE_GXT_TEXTURE_FLAG_HAS_BORDER_DATA) != 0)
+			{
+				u32 uBorderDataSize = 0;
+				if (!sce::Texture::Gxt::getBorderDataSize(uBorderDataSize, sceGxtTextureInfo.width, sceGxtTextureInfo.height, static_cast<SceGxmTextureFormat>(sceGxtTextureInfo.format)))
+				{
+					bResult = false;
+					break;
+				}
+				uTexDataOffset += uBorderDataSize;
+			}
+			if (uTexDataOffset + data.m_totalSize > uDataEnd)
+			{
+				bResult = false;
+				UPrintf(USTR("ERROR: data size is too small\n\n"));
+				break;
+			}
+			data.m_data.resize(data.m_totalSize);
+			data.m_palette16 = nullptr;
+			data.m_palette256 = nullptr;
+			memcpy(&*data.m_data.begin(), pGxt + uTexDataOffset, data.m_totalSize);
+			if (sce::Texture::Gxt::isIndexed(static_cast<SceGxmTextureFormat>(sceGxtTextureInfo.format)))
+			{
+				nNumTextures++;
+				if (sceGxtTextureInfo.paletteIndex == UINT32_MAX)
+				{
+					bResult = false;
+					UPrintf(USTR("ERROR: palette index %08X error\n\n"), static_cast<n32>(sceGxtTextureInfo.paletteIndex));
+					break;
+				}
+				u32 uBpp = 0;
+				if (!sce::Texture::Gxt::getBpp(uBpp, static_cast<SceGxmTextureFormat>(sceGxtTextureInfo.format)))
+				{
+					bResult = false;
+					break;
+				}
+				switch (uBpp)
+				{
+				case 4:
+					if (sceGxtTextureInfo.paletteIndex >= pSceGxtHeader->numP4Palettes)
+					{
+						bResult = false;
+						UPrintf(USTR("ERROR: palette16 index %08X error\n\n"), static_cast<n32>(sceGxtTextureInfo.paletteIndex));
+						break;
+					}
+					data.m_palette16 = &*(m_vPalette16.begin() + sceGxtTextureInfo.paletteIndex);
+					break;
+				case 8:
+					if (sceGxtTextureInfo.paletteIndex >= pSceGxtHeader->numP8Palettes)
+					{
+						bResult = false;
+						UPrintf(USTR("ERROR: palette256 index %08X error\n\n"), static_cast<n32>(sceGxtTextureInfo.paletteIndex));
+						break;
+					}
+					data.m_palette256 = &*(m_vPalette256.begin() + sceGxtTextureInfo.paletteIndex);
+					break;
+				}
+				if (!bResult)
+				{
+					break;
+				}
+			}
+			else
+			{
+				if (sceGxtTextureInfo.paletteIndex != UINT32_MAX)
+				{
+					bResult = false;
+					UPrintf(USTR("ERROR: palette index %08X error\n\n"), static_cast<n32>(sceGxtTextureInfo.paletteIndex));
+					break;
+				}
+			}
+			m_vData.push_back(data);
+		}
+		if (!bResult)
+		{
+			break;
+		}
+	} while (false);
+	delete[] pGxt;
+	if (bResult && nNumTextures != 0)
+	{
+		UMkdir(m_sDirName.c_str());
+		for (u32 i = 0; i < static_cast<u32>(m_vData.size()); i++)
+		{
+			sce::Texture::Gxt::Data& data = m_vData[i];
+			if (!sce::Texture::Gxt::isIndexed(data.m_format))
+			{
+				continue;
+			}
+			u32 uPaletteCount = 0;
+			if (data.m_palette16 != nullptr)
+			{
+				uPaletteCount = static_cast<u32>(m_vPalette16.size());
+			}
+			if (data.m_palette256 != nullptr)
+			{
+				uPaletteCount = static_cast<u32>(m_vPalette256.size());
+			}
+			u32 uNumFaces = data.m_type == SCE_GXM_TEXTURE_CUBE ? 6 : 1;
+			u32 uOffset = 0;
+			u32 uBpp = 0;
+			if (!sce::Texture::Gxt::getBpp(uBpp, data.m_format))
+			{
+				bResult = false;
+				break;
+			}
+			u32 uFaceAlignment = (uNumFaces > 1 && data.m_numLevels > 1) ? sce::Texture::Gxt::getFaceAlignment(uBpp, data.m_width) : 1;
+			if (sce::Texture::Gxt::isBlockCompressed(data.m_format))
+			{
+				u32 uBlockWidth = sce::Texture::Gxt::getBlockWidth(data.m_format);
+				u32 uBlockHeight = sce::Texture::Gxt::getBlockHeight(data.m_format);
+				for (u32 j = 0; j < uNumFaces; j++)
+				{
+					u32 uFaceOffset = uOffset;
+					u32 uMipWidth = std::max<u32>(data.m_width, uBlockWidth);
+					u32 uMipHeight = std::max<u32>(data.m_height, uBlockHeight);
+					u32 uMipWidthEx = sce::Texture::enclosingPowerOf2(uMipWidth);
+					u32 uMipHeightEx = sce::Texture::enclosingPowerOf2(uMipHeight);
+					for (u32 k = 0; k < data.m_numLevels; k++)
+					{
+						u32 uMipWidthBlocks = (uMipWidth + uBlockWidth - 1) / uBlockWidth;
+						u32 uMipHeightBlocks = (uMipHeight + uBlockHeight - 1) / uBlockHeight;
+						if (k == 0)
+						{
+							u8* pLinear = new u8[uMipWidthEx * uMipHeightEx * uBpp / 8];
+							if (!sce::Texture::Gxt::isPvr(data.m_format) && (data.m_type == SCE_GXM_TEXTURE_SWIZZLED || data.m_type == SCE_GXM_TEXTURE_SWIZZLED_ARBITRARY || data.m_type == SCE_GXM_TEXTURE_CUBE))
+							{
+								sce::Texture::deSwizzleLevel(pLinear, &*data.m_data.begin() + uOffset, uMipWidthBlocks, uMipHeightBlocks, uBpp * uBlockWidth * uBlockHeight);
+							}
+							else
+							{
+								memcpy(pLinear, &*data.m_data.begin() + uOffset, uMipWidthEx * uMipHeightEx * uBpp / 8);
+							}
+							for (u32 uTestCount = 0; uTestCount < uPaletteCount; uTestCount++)
+							{
+								if (data.m_palette16 != nullptr)
+								{
+									data.m_palette16 = &*(m_vPalette16.begin() + uTestCount);
+								}
+								if (data.m_palette256 != nullptr)
+								{
+									data.m_palette256 = &*(m_vPalette256.begin() + uTestCount);
+								}
+								pvrtexture::CPVRTexture* pPVRTexture = nullptr;
+								if (decode(&data, pLinear, uMipWidthEx, uMipHeightEx, uBpp, &pPVRTexture) == 0)
+								{
+									UString sPngFileName = Format(USTR("%") PRIUS USTR("/%d_%d_test_p%d.png"), m_sDirName.c_str(), i, j, uTestCount);
+									FILE* fpSub = UFopen(sPngFileName.c_str(), USTR("wb"));
+									if (fpSub == nullptr)
+									{
+										delete pPVRTexture;
+										delete[] pLinear;
+										bResult = false;
+										break;
+									}
+									if (m_bVerbose)
+									{
+										UPrintf(USTR("save: %") PRIUS USTR("\n"), sPngFileName.c_str());
+									}
+									png_structp pPng = png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
+									if (pPng == nullptr)
+									{
+										fclose(fpSub);
+										delete pPVRTexture;
+										delete[] pLinear;
+										bResult = false;
+										UPrintf(USTR("ERROR: png_create_write_struct error\n\n"));
+										break;
+									}
+									png_infop pInfo = png_create_info_struct(pPng);
+									if (pInfo == nullptr)
+									{
+										png_destroy_write_struct(&pPng, nullptr);
+										fclose(fpSub);
+										delete pPVRTexture;
+										delete[] pLinear;
+										bResult = false;
+										UPrintf(USTR("ERROR: png_create_info_struct error\n\n"));
+										break;
+									}
+									if (setjmp(png_jmpbuf(pPng)) != 0)
+									{
+										png_destroy_write_struct(&pPng, &pInfo);
+										fclose(fpSub);
+										delete pPVRTexture;
+										delete[] pLinear;
+										bResult = false;
+										UPrintf(USTR("ERROR: setjmp error\n\n"));
+										break;
+									}
+									png_init_io(pPng, fpSub);
+									png_set_IHDR(pPng, pInfo, data.m_width, data.m_height, 8, PNG_COLOR_TYPE_RGB_ALPHA, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
+									u8* pData = static_cast<u8*>(pPVRTexture->getDataPtr());
+									png_bytepp pRowPointers = new png_bytep[data.m_height];
+									for (u32 l = 0; l < data.m_height; l++)
+									{
+										pRowPointers[l] = pData + l * uMipWidthEx * 4;
+									}
+									png_set_rows(pPng, pInfo, pRowPointers);
+									png_write_png(pPng, pInfo, PNG_TRANSFORM_IDENTITY, nullptr);
+									png_destroy_write_struct(&pPng, &pInfo);
+									delete[] pRowPointers;
+									fclose(fpSub);
+									delete pPVRTexture;
+									delete[] pLinear;
+								}
+								else
+								{
+									delete[] pLinear;
+									bResult = false;
+									UPrintf(USTR("ERROR: decode error\n\n"));
+									break;
+								}
+							}
+						}
+						u32 uLevelSizeSrc = (uBpp * uMipWidthEx * uMipHeightEx) / 8;
+						uOffset += uLevelSizeSrc;
+						uMipWidth = uMipWidth > uBlockWidth ? uMipWidth / 2 : uBlockWidth;
+						uMipHeight = uMipHeight > uBlockHeight ? uMipHeight / 2 : uBlockHeight;
+						uMipWidthEx = uMipWidthEx > uBlockWidth ? uMipWidthEx / 2 : uBlockWidth;
+						uMipHeightEx = uMipHeightEx > uBlockHeight ? uMipHeightEx / 2 : uBlockHeight;
+					}
+					if (i < uNumFaces - 1)
+					{
+						uOffset = uFaceOffset + SCE_ALIGN(uOffset - uFaceOffset, uFaceAlignment);
+					}
+				}
+			}
+			else
+			{
+				u32 uWidthAlignment = data.m_type == SCE_GXM_TEXTURE_LINEAR ? SCE_GXM_TEXTURE_IMPLICIT_STRIDE_ALIGNMENT : 1;
+				for (u32 j = 0; j < uNumFaces; j++)
+				{
+					u32 uFaceOffset = uOffset;
+					u32 uMipWidth = data.m_width;
+					u32 uMipHeight = data.m_height;
+					u32 uMipWidthEx = data.m_numLevels > 1 ? sce::Texture::enclosingPowerOf2(data.m_width) : data.m_width;
+					u32 uMipHeightEx = data.m_numLevels > 1 ? sce::Texture::enclosingPowerOf2(data.m_height) : data.m_height;
+					uMipWidthEx = SCE_ALIGN(uMipWidthEx, uWidthAlignment);
+					for (u32 k = 0; k < data.m_numLevels; k++)
+					{
+						if (k == 0)
+						{
+							u8* pLinear = new u8[uMipWidthEx * uMipHeightEx * uBpp / 8];
+							if (data.m_type == SCE_GXM_TEXTURE_SWIZZLED || data.m_type == SCE_GXM_TEXTURE_SWIZZLED_ARBITRARY || data.m_type == SCE_GXM_TEXTURE_CUBE)
+							{
+								sce::Texture::deSwizzleLevel(pLinear, &*data.m_data.begin() + uOffset, uMipWidthEx, uMipHeightEx, uBpp);
+							}
+							else
+							{
+								memcpy(pLinear, &*data.m_data.begin() + uOffset, uMipWidthEx * uMipHeightEx * uBpp / 8);
+							}
+							for (u32 uTestCount = 0; uTestCount < uPaletteCount; uTestCount++)
+							{
+								if (data.m_palette16 != nullptr)
+								{
+									data.m_palette16 = &*(m_vPalette16.begin() + uTestCount);
+								}
+								if (data.m_palette256 != nullptr)
+								{
+									data.m_palette256 = &*(m_vPalette256.begin() + uTestCount);
+								}
+								pvrtexture::CPVRTexture* pPVRTexture = nullptr;
+								if (decode(&data, pLinear, uMipWidthEx, uMipHeightEx, uBpp, &pPVRTexture) == 0)
+								{
+									UString sPngFileName = Format(USTR("%") PRIUS USTR("/%d_%d_test_p%d.png"), m_sDirName.c_str(), i, j, uTestCount);
+									FILE* fpSub = UFopen(sPngFileName.c_str(), USTR("wb"));
+									if (fpSub == nullptr)
+									{
+										delete pPVRTexture;
+										delete[] pLinear;
+										bResult = false;
+										break;
+									}
+									if (m_bVerbose)
+									{
+										UPrintf(USTR("save: %") PRIUS USTR("\n"), sPngFileName.c_str());
+									}
+									png_structp pPng = png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
+									if (pPng == nullptr)
+									{
+										fclose(fpSub);
+										delete pPVRTexture;
+										delete[] pLinear;
+										bResult = false;
+										UPrintf(USTR("ERROR: png_create_write_struct error\n\n"));
+										break;
+									}
+									png_infop pInfo = png_create_info_struct(pPng);
+									if (pInfo == nullptr)
+									{
+										png_destroy_write_struct(&pPng, nullptr);
+										fclose(fpSub);
+										delete pPVRTexture;
+										delete[] pLinear;
+										bResult = false;
+										UPrintf(USTR("ERROR: png_create_info_struct error\n\n"));
+										break;
+									}
+									if (setjmp(png_jmpbuf(pPng)) != 0)
+									{
+										png_destroy_write_struct(&pPng, &pInfo);
+										fclose(fpSub);
+										delete pPVRTexture;
+										delete[] pLinear;
+										bResult = false;
+										UPrintf(USTR("ERROR: setjmp error\n\n"));
+										break;
+									}
+									png_init_io(pPng, fpSub);
+									png_set_IHDR(pPng, pInfo, data.m_width, data.m_height, 8, PNG_COLOR_TYPE_RGB_ALPHA, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
+									u8* pData = static_cast<u8*>(pPVRTexture->getDataPtr());
+									png_bytepp pRowPointers = new png_bytep[data.m_height];
+									for (u32 l = 0; l < data.m_height; l++)
+									{
+										pRowPointers[l] = pData + l * uMipWidthEx * 4;
+									}
+									png_set_rows(pPng, pInfo, pRowPointers);
+									png_write_png(pPng, pInfo, PNG_TRANSFORM_IDENTITY, nullptr);
+									png_destroy_write_struct(&pPng, &pInfo);
+									delete[] pRowPointers;
+									fclose(fpSub);
+									delete pPVRTexture;
+								}
+								else
+								{
+									bResult = false;
+									UPrintf(USTR("ERROR: decode error\n\n"));
+									break;
+								}
+							}
+							delete[] pLinear;
+							if (!bResult)
+							{
+								break;
+							}
+						}
+						uOffset += uMipHeightEx * ((uMipWidthEx * uBpp + 7) / 8);
+						uMipWidth = uMipWidth > 1 ? uMipWidth / 2 : 1;
+						uMipHeight = uMipHeight > 1 ? uMipHeight / 2 : 1;
+						uMipWidthEx = uMipWidthEx > 1 ? uMipWidthEx / 2 : 1;
+						uMipHeightEx = uMipHeightEx > 1 ? uMipHeightEx / 2 : 1;
+						uMipWidthEx = SCE_ALIGN(uMipWidthEx, uWidthAlignment);
+					}
+					if (j < uNumFaces - 1)
+					{
+						uOffset = uFaceOffset + SCE_ALIGN(uOffset - uFaceOffset, uFaceAlignment);
+					}
+				}
+				if (!bResult)
+				{
+					break;
+				}
+			}
+		}
+	}
+	return bResult;
+}
+
 bool CGxt::IsGxtFile(const UString& a_sFileName)
 {
 	FILE* fp = UFopen(a_sFileName.c_str(), USTR("rb"));

@@ -6,6 +6,7 @@ CGxtTool::SOption CGxtTool::s_Option[] =
 	{ USTR("export"), USTR('e'), USTR("export from the target file") },
 	{ USTR("import"), USTR('i'), USTR("import to the target file") },
 	{ USTR("check"), USTR('c'), USTR("check if the target file is a gxt file") },
+	{ USTR("test-palette"), 0, USTR("test all palette") },
 	{ USTR("file"), USTR('f'), USTR("the target file") },
 	{ USTR("dir"), USTR('d'), USTR("the dir for the target file") },
 	{ USTR("verbose"), USTR('v'), USTR("show the info") },
@@ -123,6 +124,7 @@ int CGxtTool::Help()
 	UPrintf(USTR("  gxttool -evfd input.gxt outputdir\n"));
 	UPrintf(USTR("  gxttool -ivfd output.gxt inputdir\n"));
 	UPrintf(USTR("  gxttool -cf input.bin\n"));
+	UPrintf(USTR("  gxttool --test-palette -vfd input.gxt testdir\n"));
 	UPrintf(USTR("\n"));
 	UPrintf(USTR("option:\n"));
 	SOption* pOption = s_Option;
@@ -180,6 +182,14 @@ int CGxtTool::Action()
 			return 1;
 		}
 	}
+	if (m_eAction == kActionTestPalette)
+	{
+		if (!testPalette())
+		{
+			UPrintf(USTR("ERROR: test palette failed\n\n"));
+			return 1;
+		}
+	}
 	if (m_eAction == kActionHelp)
 	{
 		return Help();
@@ -218,6 +228,17 @@ CGxtTool::EParseOptionReturn CGxtTool::parseOptions(const UChar* a_pName, int& a
 			m_eAction = kActionCheck;
 		}
 		else if (m_eAction != kActionCheck && m_eAction != kActionHelp)
+		{
+			return kParseOptionReturnOptionConflict;
+		}
+	}
+	else if (UCscmp(a_pName, USTR("test-palette")) == 0)
+	{
+		if (m_eAction == kActionNone)
+		{
+			m_eAction = kActionTestPalette;
+		}
+		else if (m_eAction != kActionTestPalette && m_eAction != kActionHelp)
 		{
 			return kParseOptionReturnOptionConflict;
 		}
@@ -277,6 +298,15 @@ bool CGxtTool::importFile()
 	gxt.SetDirName(m_sDirName);
 	gxt.SetVerbose(m_bVerbose);
 	return gxt.ImportFile();
+}
+
+bool CGxtTool::testPalette()
+{
+	CGxt gxt;
+	gxt.SetFileName(m_sFileName);
+	gxt.SetDirName(m_sDirName);
+	gxt.SetVerbose(m_bVerbose);
+	return gxt.TestPalette();
 }
 
 int UMain(int argc, UChar* argv[])
